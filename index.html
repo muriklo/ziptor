@@ -1,0 +1,1092 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ziptor - Compressor Inteligente</title>
+    <!-- Bibliotecas (via CDN) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <style>
+        /* =========================================
+           ZIPTOR - DESIGN SYSTEM & RESET
+           ========================================= */
+        :root {
+            --bg-base: #090e17;
+            --bg-panel: #111827;
+            --bg-hover: #1f2937;
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --accent: #8b5cf6;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border: #1f2937;
+            --border-light: #374151;
+            --radius: 12px;
+            --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: var(--font); }
+        
+        body { 
+            background: var(--bg-base); 
+            color: var(--text-main); 
+            height: 100vh; 
+            display: flex; 
+            flex-direction: column; 
+            overflow: hidden; 
+        }
+
+        /* SCROLLBARS */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-base); }
+        ::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+        /* =========================================
+           LAYOUT PRINCIPAL
+           ========================================= */
+        header {
+            display: flex;
+            align-items: center;
+            padding: 1rem 1.5rem;
+            background: var(--bg-panel);
+            border-bottom: 1px solid var(--border);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            z-index: 10;
+        }
+
+        header img {
+            width: 64px;
+            height: 64px;
+            margin-right: 1.25rem;
+            filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.4));
+        }
+
+        header h1 {
+            font-size: 1.5rem;
+            font-weight: 800;
+            background: linear-gradient(90deg, var(--primary), var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+        }
+
+        .app-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* SIDEBAR (Controles e Resumo) */
+        .sidebar {
+            width: 340px;
+            background: var(--bg-panel);
+            border-right: 1px solid var(--border);
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            overflow-y: auto;
+        }
+
+        /* ÁREA PRINCIPAL (Tabela) */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--bg-base);
+            padding: 1.5rem;
+            overflow: hidden;
+        }
+
+        /* =========================================
+           COMPONENTES
+           ========================================= */
+        /* Botões */
+        .btn {
+            padding: 0.875rem 1.25rem;
+            border-radius: 8px;
+            border: none;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            color: white;
+            width: 100%;
+        }
+        .btn-primary { background: var(--primary); box-shadow: 0 4px 12px rgba(59,130,246,0.3); }
+        .btn-primary:hover { background: var(--primary-hover); transform: translateY(-1px); }
+        .btn-success { background: var(--success); box-shadow: 0 4px 12px rgba(16,185,129,0.3); }
+        .btn-success:hover { background: #059669; transform: translateY(-1px); }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none !important; box-shadow: none; }
+
+        /* Cards de Estatística */
+        .stats-container { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+        .stat-card {
+            background: var(--bg-hover);
+            border-radius: 8px;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid var(--border-light);
+        }
+        .stat-card.full-width { grid-column: 1 / -1; }
+        .stat-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; margin-bottom: 0.25rem; }
+        .stat-value { font-size: 1.25rem; font-weight: 700; }
+        
+        /* Cores de Texto */
+        .text-success { color: var(--success); }
+        .text-danger { color: var(--danger); }
+        .text-warning { color: var(--warning); }
+        .text-muted { color: var(--text-muted); }
+
+        /* Tabela de Arquivos */
+        .table-wrapper {
+            flex: 1;
+            background: var(--bg-panel);
+            border-radius: 12px;
+            border: 1px solid var(--border-light);
+            overflow: auto;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+        }
+        table { width: 100%; border-collapse: collapse; text-align: left; }
+        th {
+            background: var(--bg-panel);
+            padding: 1rem;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border-bottom: 2px solid var(--border-light);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.875rem;
+            vertical-align: middle;
+        }
+        tr:hover td { background: var(--bg-hover); }
+        tr.excluded td { opacity: 0.6; }
+        tr.excluded td.path-cell { text-decoration: line-through; }
+
+        /* Badges e Ações na Tabela */
+        .badge {
+            padding: 0.25rem 0.6rem;
+            border-radius: 9999px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            display: inline-block;
+        }
+        .bg-green { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+        .bg-red { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+        .bg-yellow { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+        .bg-gray { background: rgba(148, 163, 184, 0.15); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3); }
+
+        .action-btn {
+            background: transparent;
+            border: 1px solid currentColor;
+            border-radius: 6px;
+            padding: 0.3rem 0.6rem;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 600;
+        }
+        .action-btn.exclude { color: var(--danger); }
+        .action-btn.exclude:hover { background: var(--danger); color: white; }
+        .action-btn.include { color: var(--success); }
+        .action-btn.include:hover { background: var(--success); color: white; }
+
+        /* Progresso */
+        .progress-box {
+            margin-top: auto;
+            background: var(--bg-hover);
+            padding: 1rem;
+            border-radius: 8px;
+            border: 1px solid var(--border-light);
+            display: none;
+        }
+        .progress-box.active { display: block; }
+        .progress-title { font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--text-main); }
+        .progress-bar { height: 8px; background: var(--bg-base); border-radius: 4px; overflow: hidden; margin-bottom: 0.5rem; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, var(--primary), var(--accent)); width: 0%; transition: width 0.2s; }
+        .progress-status { font-size: 0.75rem; color: var(--text-muted); word-break: break-all; }
+
+        /* Header da Tabela (Filtros) */
+        .table-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        .filters { display: flex; gap: 0.5rem; }
+        .filter-btn {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-light);
+            color: var(--text-muted);
+            padding: 0.4rem 0.8rem;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .filter-btn:hover { border-color: var(--primary); color: var(--text-main); }
+        .filter-btn.active { background: var(--primary); border-color: var(--primary); color: white; }
+
+        /* =========================================
+           TOASTS
+           ========================================= */
+
+        .toast-container { position: fixed; bottom: 2rem; right: 2rem; display: flex; flex-direction: column; gap: 0.5rem; z-index: 200; }
+        .toast {
+            background: var(--bg-hover); border-left: 4px solid var(--primary);
+            color: var(--text-main); padding: 1rem 1.5rem; border-radius: 6px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3); font-size: 0.875rem;
+            animation: slideIn 0.3s ease forwards;
+        }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        /* Busca / Input */
+        .search-input {
+            background: var(--bg-base);
+            border: 1px solid var(--border-light);
+            color: var(--text-main);
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            outline: none;
+            width: 250px;
+            transition: 0.2s;
+        }
+        .search-input:focus { border-color: var(--primary); }
+
+        /* Drag & Drop */
+        .dropzone-overlay {
+            position: fixed; inset: 0; background: rgba(17, 24, 39, 0.9);
+            z-index: 9999; display: none; align-items: center; justify-content: center;
+            border: 4px dashed var(--primary); flex-direction: column; gap: 1rem;
+        }
+        .dropzone-overlay.active { display: flex; }
+        .dropzone-text { font-size: 2rem; font-weight: 700; color: var(--primary); }
+
+        /* Category Bars */
+        .cat-bar-container { width: 100%; height: 6px; background: var(--bg-base); border-radius: 3px; display: flex; overflow: hidden; margin-top: 0.5rem; }
+        .cat-bar { height: 100%; }
+        .cat-pdf { background: #ef4444; }
+        .cat-img { background: #3b82f6; }
+        .cat-other { background: #10b981; }
+        .cat-legend { display: flex; gap: 0.75rem; font-size: 0.7rem; color: var(--text-muted); margin-top: 0.5rem; justify-content: space-between; }
+        .cat-legend span { display: flex; align-items: center; gap: 0.25rem; }
+        .cat-dot { width: 8px; height: 8px; border-radius: 50%; }
+        
+        /* Folder Tree View */
+        .folder-row {
+            cursor: pointer;
+            background: rgba(59, 130, 246, 0.03);
+        }
+        .folder-row:hover td {
+            background: rgba(59, 130, 246, 0.08) !important;
+        }
+        .folder-row td {
+            border-bottom: 1px solid var(--border-light);
+        }
+        .folder-name {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: 600;
+            color: var(--text-main);
+            font-size: 0.875rem;
+            white-space: nowrap;
+        }
+        .folder-toggle {
+            display: inline-block;
+            transition: transform 0.2s ease;
+            font-size: 0.6rem;
+            color: var(--text-muted);
+            width: 14px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        .folder-toggle.collapsed {
+            transform: rotate(-90deg);
+        }
+        .folder-summary {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-weight: 400;
+            margin-left: 0.25rem;
+        }
+
+        /* Size Visual Indicators */
+        .size-cell {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+        .size-text {
+            font-weight: 600;
+            font-size: 0.875rem;
+        }
+        .size-bar {
+            width: 100%;
+            max-width: 120px;
+            height: 4px;
+            background: var(--bg-base);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .size-bar-fill {
+            height: 100%;
+            border-radius: 2px;
+            min-width: 2px;
+        }
+        .size-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+    <!-- Overlay Drag & Drop -->
+    <div id="dropzone" class="dropzone-overlay">
+        <div class="dropzone-text">Solte a pasta aqui!</div>
+        <div style="color: var(--text-muted);">Para iniciar o escaneamento e compressão.</div>
+    </div>
+
+    <!-- CABEÇALHO -->
+    <header>
+        <!-- Ícone SVG da pasta conforme solicitado -->
+        <img src="ziptor.svg" alt="Ziptor Icon" onerror="this.style.display='none'">
+        <h1>Ziptor - O Fera das Compressões</h1>
+    </header>
+
+    <div class="app-container">
+        
+        <!-- BARRA LATERAL (Controles) -->
+        <aside class="sidebar">
+            <button id="btnSelect" class="btn btn-primary">
+                📁 Selecionar Pasta
+            </button>
+            
+            <div id="statsSection" class="hidden" style="display: flex; flex-direction: column; gap: 1.5rem;">
+                <div class="stats-container">
+                    <div class="stat-card full-width" style="background: var(--bg-panel);">
+                        <span class="stat-label">Diretório Atual</span>
+                        <span id="lblFolderName" class="stat-value text-primary" style="font-size: 1rem; color: var(--primary);">---</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">Incluídos</span>
+                        <span id="lblIncluded" class="stat-value text-success">0</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">Excluídos</span>
+                        <span id="lblExcluded" class="stat-value text-danger">0</span>
+                    </div>
+                    <div class="stat-card full-width">
+                        <span class="stat-label">Tamanho Final Estimado</span>
+                        <span id="lblSize" class="stat-value text-success">0 B</span>
+                    </div>
+                </div>
+
+                <!-- Resumo por Categorias -->
+                <div class="stat-card full-width" style="padding: 1rem;">
+                    <span class="stat-label">Composição (Arquivos Incluídos)</span>
+                    <div class="cat-bar-container">
+                        <div id="barPdf" class="cat-bar cat-pdf" style="width: 0%"></div>
+                        <div id="barImg" class="cat-bar cat-img" style="width: 0%"></div>
+                        <div id="barOther" class="cat-bar cat-other" style="width: 0%"></div>
+                    </div>
+                    <div class="cat-legend">
+                        <span><div class="cat-dot cat-pdf"></div>PDFs (<span id="lblPdf">0B</span>)</span>
+                        <span><div class="cat-dot cat-img"></div>Imagens (<span id="lblImg">0B</span>)</span>
+                        <span><div class="cat-dot cat-other"></div>Outros (<span id="lblOther">0B</span>)</span>
+                    </div>
+                </div>
+
+                <button id="btnCompress" class="btn btn-success">
+                    ⚡ Iniciar Compressão
+                </button>
+            </div>
+
+            <!-- Box de Progresso -->
+            <div id="progressBox" class="progress-box">
+                <div class="progress-title" id="progressTitle">Preparando...</div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <div class="progress-status" id="progressStatus">Aguarde...</div>
+            </div>
+        </aside>
+
+        <!-- ÁREA PRINCIPAL (Tabela) -->
+        <main class="main-content">
+            <div class="table-header">
+                <div style="display: flex; gap: 1rem; align-items: center;">
+                    <h2 style="font-size: 1.1rem; font-weight: 600;">Arquivos Escaneados</h2>
+                    <input type="text" id="searchInput" class="search-input" placeholder="Buscar arquivo ou .extensão...">
+                </div>
+                <div class="filters">
+                    <button class="filter-btn active" data-filter="all">Todos</button>
+                    <button class="filter-btn" data-filter="included">Somente Incluídos</button>
+                    <button class="filter-btn" data-filter="excluded">Somente Excluídos</button>
+                </div>
+            </div>
+
+            <div class="table-wrapper">
+                <table id="filesTable">
+                    <thead>
+                        <tr>
+                            <th style="width: 5%; text-align: center;">Incluir</th>
+                            <th style="width: 15%;">Status</th>
+                            <th style="width: 60%; cursor: pointer; user-select: none;" id="thName" onclick="window.app.setSort('name')">Nome do Arquivo ↕️</th>
+                            <th style="width: 20%; cursor: pointer; user-select: none;" id="thSize" onclick="window.app.setSort('size')">Tamanho ⬇️</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        <tr>
+                            <td colspan="4" style="text-align: center; padding: 3rem; color: var(--text-muted);">
+                                Nenhuma pasta selecionada. Clique em "Selecionar Pasta" para começar.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
+
+    </div>
+
+    <!-- TOASTS -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <script>
+        /**
+         * ZIPTOR APP
+         * Arquitetura baseada em classes para código mais limpo e manutenção facilitada.
+         */
+        class ZiptorApp {
+            constructor() {
+                // Configurações
+                this.ZIP_SIZE_LIMIT = 10 * 1024 * 1024; // 10 MB
+                this.EXCLUDED_EXT = new Set(['afpub', 'afdesign', 'afphoto', 'aftemplate', 'cdr', 'cdt', 'cmx', 'des', 'pat', 'clk', 'csl', 'lnk']);
+                this.EXCLUDED_NAMES = new Set(['thumbs.db']);
+
+                // Estado
+                this.files = []; // { path, handle, size, excluded, reason, autoExcluded }
+                this.folderName = '';
+                this.currentFilter = 'all';
+                this.isCompressing = false;
+                this.collapsedFolders = new Set();
+                this.sortConfig = { key: 'size', direction: 'desc' };
+
+                // Bind de DOM
+                this.initDOM();
+                this.bindEvents();
+            }
+
+            initDOM() {
+                this.ui = {
+                    btnSelect: document.getElementById('btnSelect'),
+                    btnCompress: document.getElementById('btnCompress'),
+                    statsSection: document.getElementById('statsSection'),
+                    lblFolderName: document.getElementById('lblFolderName'),
+                    lblIncluded: document.getElementById('lblIncluded'),
+                    lblExcluded: document.getElementById('lblExcluded'),
+                    lblSize: document.getElementById('lblSize'),
+                    tableBody: document.getElementById('tableBody'),
+                    filterBtns: document.querySelectorAll('.filter-btn'),
+                    progressBox: document.getElementById('progressBox'),
+                    progressTitle: document.getElementById('progressTitle'),
+                    progressFill: document.getElementById('progressFill'),
+                    progressStatus: document.getElementById('progressStatus'),
+                    toastContainer: document.getElementById('toastContainer'),
+                    searchInput: document.getElementById('searchInput'),
+                    dropzone: document.getElementById('dropzone'),
+                    barPdf: document.getElementById('barPdf'),
+                    barImg: document.getElementById('barImg'),
+                    barOther: document.getElementById('barOther'),
+                    lblPdf: document.getElementById('lblPdf'),
+                    lblImg: document.getElementById('lblImg'),
+                    lblOther: document.getElementById('lblOther')
+                };
+            }
+
+            bindEvents() {
+                this.ui.btnSelect.addEventListener('click', () => this.handleSelectFolder());
+                this.ui.btnCompress.addEventListener('click', () => this.handleCompress());
+                
+                this.ui.searchInput.addEventListener('input', () => this.renderTable());
+
+                this.ui.filterBtns.forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        this.ui.filterBtns.forEach(b => b.classList.remove('active'));
+                        e.target.classList.add('active');
+                        this.currentFilter = e.target.dataset.filter;
+                        this.renderTable();
+                    });
+                });
+
+                // Drag & Drop
+                document.body.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    this.ui.dropzone.classList.add('active');
+                });
+                this.ui.dropzone.addEventListener('dragleave', (e) => {
+                    e.preventDefault();
+                    this.ui.dropzone.classList.remove('active');
+                });
+                this.ui.dropzone.addEventListener('drop', async (e) => {
+                    e.preventDefault();
+                    this.ui.dropzone.classList.remove('active');
+                    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+                        const item = e.dataTransfer.items[0];
+                        if (item.kind === 'file') {
+                            const handle = await item.getAsFileSystemHandle();
+                            if (handle.kind === 'directory') {
+                                this.processFolderHandle(handle);
+                            } else {
+                                this.showToast('Solte uma pasta, não um arquivo individual.', 'warning');
+                            }
+                        }
+                    }
+                });
+
+                // Verifica suporte API
+                if (!('showDirectoryPicker' in window)) {
+                    this.showToast('Navegador não suportado. Use Chrome ou Edge.', 'error');
+                    this.ui.btnSelect.disabled = true;
+                }
+            }
+
+            // ==========================================
+            // LÓGICA DE ESCANEAMENTO
+            // ==========================================
+            
+            async handleSelectFolder() {
+                try {
+                    const handle = await window.showDirectoryPicker();
+                    await this.processFolderHandle(handle);
+                } catch (err) {
+                    if (err.name !== 'AbortError') {
+                        console.error(err);
+                        this.showToast('Erro ao selecionar a pasta', 'error');
+                    }
+                }
+            }
+
+            async processFolderHandle(handle) {
+                try {
+                    this.folderName = handle.name;
+                    this.files = [];
+                    
+                    this.ui.btnSelect.disabled = true;
+                    this.ui.btnSelect.innerHTML = '⏳ Escaneando...';
+                    
+                    await this.scanDirectory(handle);
+                    
+                    // ORDENAÇÃO PADRÃO: Sempre do MAIOR para o MENOR
+                    this.files.sort((a, b) => b.size - a.size);
+                    
+                    this.ui.statsSection.classList.remove('hidden');
+                    this.ui.lblFolderName.textContent = this.folderName;
+                    
+                    this.updateStats();
+                    this.renderTable();
+                    this.showToast(`Pasta carregada: ${this.files.length} arquivos encontrados.`);
+                } catch (err) {
+                    console.error(err);
+                    this.showToast('Erro ao ler a pasta', 'error');
+                } finally {
+                    this.ui.btnSelect.disabled = false;
+                    this.ui.btnSelect.innerHTML = '📁 Trocar Pasta';
+                }
+            }
+
+            async scanDirectory(dirHandle, basePath = '') {
+                for await (const entry of dirHandle.values()) {
+                    const entryPath = basePath ? `${basePath}/${entry.name}` : entry.name;
+                    if (entry.kind === 'file') {
+                        try {
+                            const file = await entry.getFile();
+                            const info = this.classifyFile(entry.name, file.size);
+                            this.files.push({
+                                path: entryPath,
+                                handle: file,
+                                size: file.size,
+                                excluded: info.excluded,
+                                reason: info.reason,
+                                autoExcluded: info.excluded // Guarda se foi excluído pelas regras fixas
+                            });
+                        } catch (e) {
+                            console.warn(`Acesso negado: ${entryPath}`);
+                        }
+                    } else if (entry.kind === 'directory') {
+                        await this.scanDirectory(entry, entryPath);
+                    }
+                }
+            }
+
+            classifyFile(name, size) {
+                const nameLower = name.toLowerCase();
+                let ext = '';
+                
+                if (nameLower.endsWith('.afpub~lock~') || nameLower.endsWith('.afdesign~lock~') || nameLower.endsWith('.afphoto~lock~')) {
+                    ext = 'lock';
+                } else {
+                    const parts = nameLower.split('.');
+                    if (parts.length > 1) ext = parts[parts.length - 1];
+                }
+
+                if (ext === 'lock') return { excluded: true, reason: 'Lock File (Sistema)' };
+                if (this.EXCLUDED_EXT.has(ext)) return { excluded: true, reason: `Proprietário (.${ext})` };
+                if (this.EXCLUDED_NAMES.has(nameLower)) return { excluded: true, reason: 'Cache do Sistema' };
+                if (ext === 'zip' && size > this.ZIP_SIZE_LIMIT) return { excluded: true, reason: `ZIP > 10MB` };
+
+                return { excluded: false, reason: '' };
+            }
+
+            // ==========================================
+            // UI E RENDERIZAÇÃO
+            // ==========================================
+
+            formatSize(bytes) {
+                if (bytes < 1024) return bytes + ' B';
+                if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+                if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
+                return (bytes / 1073741824).toFixed(2) + ' GB';
+            }
+
+            updateStats() {
+                const included = this.files.filter(f => !f.excluded);
+                const excluded = this.files.filter(f => f.excluded);
+                const totalSize = included.reduce((acc, f) => acc + f.size, 0);
+
+                this.ui.lblIncluded.textContent = included.length;
+                this.ui.lblExcluded.textContent = excluded.length;
+                this.ui.lblSize.textContent = this.formatSize(totalSize);
+
+                // Categoria Stats
+                let pdfSize = 0, imgSize = 0, otherSize = 0;
+                included.forEach(f => {
+                    const ext = f.path.split('.').pop().toLowerCase();
+                    if (ext === 'pdf') {
+                        pdfSize += f.size;
+                    } else if (['png', 'jpg', 'jpeg', 'svg', 'gif', 'webp'].includes(ext)) {
+                        imgSize += f.size;
+                    } else {
+                        otherSize += f.size;
+                    }
+                });
+
+                const totalCat = pdfSize + imgSize + otherSize;
+                if (totalCat > 0) {
+                    this.ui.barPdf.style.width = `${(pdfSize / totalCat) * 100}%`;
+                    this.ui.barImg.style.width = `${(imgSize / totalCat) * 100}%`;
+                    this.ui.barOther.style.width = `${(otherSize / totalCat) * 100}%`;
+                } else {
+                    this.ui.barPdf.style.width = '0%';
+                    this.ui.barImg.style.width = '0%';
+                    this.ui.barOther.style.width = '0%';
+                }
+
+                this.ui.lblPdf.textContent = this.formatSize(pdfSize);
+                this.ui.lblImg.textContent = this.formatSize(imgSize);
+                this.ui.lblOther.textContent = this.formatSize(otherSize);
+            }
+
+            renderTable() {
+                let displayFiles = [...this.files];
+                
+                // Filtro Rápido (Somente Incluídos / Excluídos)
+                if (this.currentFilter === 'included') displayFiles = displayFiles.filter(f => !f.excluded);
+                if (this.currentFilter === 'excluded') displayFiles = displayFiles.filter(f => f.excluded);
+
+                // Busca / Search
+                const term = this.ui.searchInput.value.toLowerCase().trim();
+                if (term) {
+                    displayFiles = displayFiles.filter(f => f.path.toLowerCase().includes(term));
+                }
+
+                if (displayFiles.length === 0) {
+                    this.ui.tableBody.innerHTML = `<tr><td colspan="5" style="text-align: center; padding: 2rem; color: var(--text-muted);">Nenhum arquivo encontrado.</td></tr>`;
+                    return;
+                }
+
+                const totalIncludedSize = this.files.filter(f => !f.excluded).reduce((acc, f) => acc + f.size, 0) || 1;
+
+                // Se buscando, lista plana com cores de tamanho
+                if (term) {
+                    displayFiles.sort((a, b) => {
+                        if (this.sortConfig.key === 'size') {
+                            return this.sortConfig.direction === 'asc' ? a.size - b.size : b.size - a.size;
+                        } else {
+                            const nameA = a.path.split('/').pop();
+                            const nameB = b.path.split('/').pop();
+                            return this.sortConfig.direction === 'asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+                        }
+                    });
+                    this.ui.tableBody.innerHTML = displayFiles.map(f => this.renderFileRow(f, 0, totalIncludedSize, true)).join('');
+                    return;
+                }
+
+                // Tree View agrupada por pastas
+                const tree = this.buildFolderTree(displayFiles);
+                const rows = [];
+                this.renderTreeNode(tree, '', 0, rows, totalIncludedSize);
+                this.ui.tableBody.innerHTML = rows.join('');
+
+                // Setar estado indeterminate nos checkboxes de pasta (não dá via HTML)
+                this.ui.tableBody.querySelectorAll('[data-indeterminate="true"]').forEach(cb => {
+                    cb.indeterminate = true;
+                });
+            }
+
+            renderFileRow(f, depth, totalSize, showFullPath = false) {
+                const realIndex = this.files.indexOf(f);
+                const cat = this.getSizeCategory(f.size);
+                const colorHex = this.getSizeColorHex(cat);
+                const barWidth = Math.max(1, (f.size / totalSize) * 100);
+                
+                let statusBadge = '';
+                let checkboxHtml = '';
+                
+                if (f.excluded) {
+                    if (f.autoExcluded) {
+                        statusBadge = `<span class="badge bg-red">Filtrado Automático</span>`;
+                        checkboxHtml = `<input type="checkbox" disabled title="Não pode ser incluído (Regra Fixa)">`;
+                    } else {
+                        statusBadge = `<span class="badge bg-yellow">Removido Manual</span>`;
+                        checkboxHtml = `<input type="checkbox" onchange="window.app.toggleFile(${realIndex})">`;
+                    }
+                } else {
+                    statusBadge = `<span class="badge bg-green">Incluído</span>`;
+                    checkboxHtml = `<input type="checkbox" checked onchange="window.app.toggleFile(${realIndex})">`;
+                }
+
+                const displayName = showFullPath ? f.path : f.path.split('/').pop();
+                const paddingLeft = 1 + depth * 1.5;
+
+                return `
+                    <tr class="${f.excluded ? 'excluded' : ''}">
+                        <td style="text-align: center;">${checkboxHtml}</td>
+                        <td>${statusBadge}</td>
+                        <td class="path-cell" title="${f.path}" style="padding-left: ${paddingLeft}rem;">
+                            <span style="display: flex; align-items: center; gap: 6px;">
+                                <span class="size-dot" style="background: ${colorHex};"></span>
+                                ${displayName}
+                            </span>
+                        </td>
+                        <td>
+                            <div class="size-cell">
+                                <span class="size-text" style="color: ${colorHex};">${this.formatSize(f.size)}</span>
+                                <div class="size-bar"><div class="size-bar-fill" style="width: ${barWidth}%; background: ${colorHex};"></div></div>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }
+
+            renderTreeNode(node, currentPath, depth, rows, totalSize) {
+                // Ordena subpastas
+                const sortedFolders = [...node._folders.entries()].sort((a, b) => {
+                    const statsA = this.getFolderStats(a[1]);
+                    const statsB = this.getFolderStats(b[1]);
+                    if (this.sortConfig.key === 'size') {
+                        return this.sortConfig.direction === 'asc' ? statsA.size - statsB.size : statsB.size - statsA.size;
+                    } else {
+                        return this.sortConfig.direction === 'asc' ? a[0].localeCompare(b[0]) : b[0].localeCompare(a[0]);
+                    }
+                });
+
+                // Renderiza subpastas
+                for (const [name, subNode] of sortedFolders) {
+                    const folderPath = currentPath ? `${currentPath}/${name}` : name;
+                    const stats = this.getFolderStats(subNode);
+                    const allFiles = this.getFilesInFolder(folderPath);
+                    const allExcluded = allFiles.length > 0 && allFiles.every(f => f.excluded);
+                    const someExcluded = allFiles.some(f => f.excluded) && !allExcluded;
+                    const isCollapsed = this.collapsedFolders.has(folderPath);
+                    const cat = this.getSizeCategory(stats.size);
+                    const colorHex = this.getSizeColorHex(cat);
+                    const barWidth = Math.max(1, (stats.size / totalSize) * 100);
+                    const paddingLeft = 0.5 + depth * 1.5;
+                    const toggleClass = isCollapsed ? 'folder-toggle collapsed' : 'folder-toggle';
+                    
+                    const escapedPath = folderPath.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                    const checkboxChecked = allExcluded ? '' : 'checked';
+                    const checkboxIndeterminate = someExcluded ? `data-indeterminate="true"` : '';
+                    const folderRowClass = allExcluded ? 'folder-row excluded' : 'folder-row';
+
+                    rows.push(`
+                        <tr class="${folderRowClass}" onclick="window.app.toggleFolder('${escapedPath}')">
+                            <td style="text-align: center;">
+                                <input type="checkbox" ${checkboxChecked} ${checkboxIndeterminate}
+                                    onclick="event.stopPropagation(); window.app.toggleFolderExclusion('${escapedPath}')"
+                                    title="Incluir/Excluir pasta inteira">
+                            </td>
+                            <td></td>
+                            <td style="padding-left: ${paddingLeft}rem;">
+                                <div class="folder-name">
+                                    <span class="${toggleClass}">▼</span>
+                                    📁 ${name}
+                                    <span class="folder-summary">${stats.count} arquivo${stats.count !== 1 ? 's' : ''}</span>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="size-cell">
+                                    <span class="size-text" style="color: ${colorHex};">${this.formatSize(stats.size)}</span>
+                                    <div class="size-bar"><div class="size-bar-fill" style="width: ${barWidth}%; background: ${colorHex};"></div></div>
+                                </div>
+                            </td>
+                        </tr>
+                    `);
+
+                    if (!isCollapsed) {
+                        this.renderTreeNode(subNode, folderPath, depth + 1, rows, totalSize);
+                    }
+                }
+
+                // Renderiza arquivos neste nível
+                const sortedFiles = [...node._files].sort((a, b) => {
+                    if (this.sortConfig.key === 'size') {
+                        return this.sortConfig.direction === 'asc' ? a.size - b.size : b.size - a.size;
+                    } else {
+                        const nameA = a.path.split('/').pop();
+                        const nameB = b.path.split('/').pop();
+                        return this.sortConfig.direction === 'asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+                    }
+                });
+                for (const f of sortedFiles) {
+                    rows.push(this.renderFileRow(f, depth, totalSize));
+                }
+            }
+
+            buildFolderTree(files) {
+                const tree = { _files: [], _folders: new Map() };
+                
+                for (const f of files) {
+                    const parts = f.path.split('/');
+                    let node = tree;
+                    
+                    for (let i = 0; i < parts.length - 1; i++) {
+                        if (!node._folders.has(parts[i])) {
+                            node._folders.set(parts[i], { _files: [], _folders: new Map() });
+                        }
+                        node = node._folders.get(parts[i]);
+                    }
+                    
+                    node._files.push(f);
+                }
+                
+                return tree;
+            }
+
+            getFolderStats(node) {
+                let count = 0, size = 0;
+                for (const f of node._files) { count++; size += f.size; }
+                for (const [, sub] of node._folders) {
+                    const s = this.getFolderStats(sub);
+                    count += s.count;
+                    size += s.size;
+                }
+                return { count, size };
+            }
+
+            getSizeCategory(bytes) {
+                if (bytes < 1024 * 1024) return 'green';           // < 1 MB
+                if (bytes < 10 * 1024 * 1024) return 'blue';      // 1 - 10 MB
+                if (bytes < 50 * 1024 * 1024) return 'yellow';    // 10 - 50 MB
+                if (bytes < 100 * 1024 * 1024) return 'orange';   // 50 - 100 MB
+                return 'red';                                       // > 100 MB
+            }
+
+            getSizeColorHex(cat) {
+                const map = { green: '#10b981', blue: '#3b82f6', yellow: '#f59e0b', orange: '#f97316', red: '#ef4444' };
+                return map[cat] || '#94a3b8';
+            }
+
+            toggleFolder(folderPath) {
+                if (this.collapsedFolders.has(folderPath)) {
+                    this.collapsedFolders.delete(folderPath);
+                } else {
+                    this.collapsedFolders.add(folderPath);
+                }
+                this.renderTable();
+            }
+
+            setSort(key) {
+                if (this.sortConfig.key === key) {
+                    this.sortConfig.direction = this.sortConfig.direction === 'asc' ? 'desc' : 'asc';
+                } else {
+                    this.sortConfig.key = key;
+                    this.sortConfig.direction = key === 'size' ? 'desc' : 'asc';
+                }
+
+                const thName = document.getElementById('thName');
+                const thSize = document.getElementById('thSize');
+                if (thName && thSize) {
+                    thName.textContent = `Nome do Arquivo ${this.sortConfig.key === 'name' ? (this.sortConfig.direction === 'asc' ? '⬆️' : '⬇️') : '↕️'}`;
+                    thSize.textContent = `Tamanho ${this.sortConfig.key === 'size' ? (this.sortConfig.direction === 'asc' ? '⬆️' : '⬇️') : '↕️'}`;
+                }
+
+                this.renderTable();
+            }
+
+            getFilesInFolder(folderPath) {
+                const prefix = folderPath + '/';
+                return this.files.filter(f => f.path.startsWith(prefix) || f.path === folderPath);
+            }
+
+            toggleFolderExclusion(folderPath) {
+                const filesInFolder = this.getFilesInFolder(folderPath);
+                const toggleableFiles = filesInFolder.filter(f => !f.autoExcluded);
+                
+                // Se todos os togláveis estão incluídos, exclui todos. Senão, inclui todos.
+                const allIncluded = toggleableFiles.every(f => !f.excluded);
+                
+                for (const f of toggleableFiles) {
+                    if (allIncluded) {
+                        f.excluded = true;
+                        f.reason = 'Pasta Excluída';
+                    } else {
+                        f.excluded = false;
+                        f.reason = '';
+                    }
+                }
+
+                this.updateStats();
+                this.renderTable();
+            }
+
+            toggleFile(index) {
+                if (this.isCompressing) return;
+                
+                const file = this.files[index];
+                if (file.autoExcluded) return; // Segurança
+
+                if (file.excluded) {
+                    file.excluded = false;
+                    file.reason = '';
+                } else {
+                    file.excluded = true;
+                    file.reason = 'Remoção Manual';
+                }
+
+                this.updateStats();
+                this.renderTable();
+            }
+
+            // ==========================================
+            // COMPRESSÃO E JSZIP
+            // ==========================================
+
+            async handleCompress() {
+                const included = this.files.filter(f => !f.excluded);
+
+                if (included.length === 0) {
+                    this.showToast('Nenhum arquivo para comprimir!', 'warning');
+                    return;
+                }
+
+                this.isCompressing = true;
+                this.ui.btnCompress.disabled = true;
+                this.ui.btnSelect.disabled = true;
+                this.ui.progressBox.classList.add('active');
+                
+                // Desabilitar botões da tabela
+                document.querySelectorAll('input[type="checkbox"]').forEach(b => b.disabled = true);
+
+                try {
+                    const zip = new JSZip();
+                    const total = included.length;
+
+                    for (let i = 0; i < total; i++) {
+                        const fileData = included[i];
+                        
+                        this.ui.progressTitle.textContent = `Lendo arquivos (${i+1}/${total})`;
+                        this.ui.progressStatus.textContent = fileData.path;
+                        this.ui.progressFill.style.width = `${Math.round(((i + 1) / total) * 50)}%`; // Primeiros 50% é leitura
+
+                        const arrayBuffer = await fileData.handle.arrayBuffer();
+                        zip.file(fileData.path, arrayBuffer);
+
+                        // Yield pro DOM atualizar (evita travamento total)
+                        if (i % 3 === 0) await new Promise(r => setTimeout(r, 0));
+                    }
+
+                    this.ui.progressTitle.textContent = 'Comprimindo ZIP...';
+                    this.ui.progressStatus.textContent = 'Isso pode levar um tempo dependendo do tamanho.';
+                    
+                    const blob = await zip.generateAsync(
+                        { type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } },
+                        (metadata) => {
+                            const pct = 50 + Math.round(metadata.percent / 2); // Últimos 50% é compressão
+                            this.ui.progressFill.style.width = `${pct}%`;
+                        }
+                    );
+
+                    saveAs(blob, 'historico_producao.zip');
+                    this.showToast('Compressão concluída com sucesso!', 'success');
+                    
+                    this.ui.progressTitle.textContent = '✅ Concluído!';
+                    this.ui.progressStatus.textContent = `Arquivo salvo (${this.formatSize(blob.size)})`;
+
+                } catch (err) {
+                    console.error(err);
+                    this.showToast(`Erro: ${err.message || err}`, 'error');
+                    this.ui.progressTitle.textContent = '❌ Erro na Compressão';
+                    this.ui.progressStatus.textContent = err.stack ? err.stack.split('\n')[0] : (err.message || 'Erro desconhecido');
+                } finally {
+                    this.isCompressing = false;
+                    this.ui.btnCompress.disabled = false;
+                    this.ui.btnSelect.disabled = false;
+                    document.querySelectorAll('input[type="checkbox"]').forEach(b => b.disabled = false);
+                    setTimeout(() => this.ui.progressBox.classList.remove('active'), 5000);
+                }
+            }
+
+            // ==========================================
+            // UTILITÁRIOS
+            // ==========================================
+
+            showToast(message, type = 'info') {
+                const toast = document.createElement('div');
+                toast.className = 'toast';
+                
+                let color = 'var(--primary)';
+                if (type === 'success') color = 'var(--success)';
+                if (type === 'error') color = 'var(--danger)';
+                if (type === 'warning') color = 'var(--warning)';
+                
+                toast.style.borderLeftColor = color;
+                toast.innerHTML = `<strong>Ziptor:</strong> ${message}`;
+                
+                this.ui.toastContainer.appendChild(toast);
+                setTimeout(() => {
+                    toast.style.opacity = '0';
+                    setTimeout(() => toast.remove(), 300);
+                }, 4000);
+            }
+        }
+
+        // Inicializar
+        window.app = new ZiptorApp();
+    </script>
+</body>
+</html>
