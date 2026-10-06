@@ -806,14 +806,18 @@
                 if (f.excluded) {
                     if (f.autoExcluded) {
                         statusBadge = `<span class="badge bg-red">Filtrado Automático</span>`;
-                        checkboxHtml = `<input type="checkbox" disabled title="Não pode ser incluído (Regra Fixa)">`;
+                        checkboxHtml = `<input type="checkbox" title="Incluir arquivo na compressão (Forçar)" onchange="window.app.toggleFile(${realIndex})">`;
                     } else {
                         statusBadge = `<span class="badge bg-yellow">Removido Manual</span>`;
                         checkboxHtml = `<input type="checkbox" onchange="window.app.toggleFile(${realIndex})">`;
                     }
                 } else {
-                    statusBadge = `<span class="badge bg-green">Incluído</span>`;
-                    checkboxHtml = `<input type="checkbox" checked onchange="window.app.toggleFile(${realIndex})">`;
+                    if (f.autoExcluded) {
+                        statusBadge = `<span class="badge" style="background: rgba(0, 255, 170, 0.2); color: #00ffa2; border: 1px solid rgba(0, 255, 170, 0.3);">Exceção Incluída</span>`;
+                    } else {
+                        statusBadge = `<span class="badge bg-green">Incluído</span>`;
+                    }
+                    checkboxHtml = `<input type="checkbox" checked title="Remover arquivo" onchange="window.app.toggleFile(${realIndex})">`;
                 }
 
                 const displayName = showFullPath ? f.path : f.path.split('/').pop();
@@ -1015,14 +1019,13 @@
                 if (this.isCompressing) return;
                 
                 const file = this.files[index];
-                if (file.autoExcluded) return; // Segurança
 
                 if (file.excluded) {
                     file.excluded = false;
                     file.reason = '';
                 } else {
                     file.excluded = true;
-                    file.reason = 'Remoção Manual';
+                    file.reason = file.autoExcluded ? 'Filtrado Automático (Revertido)' : 'Remoção Manual';
                 }
 
                 this.updateStats();
